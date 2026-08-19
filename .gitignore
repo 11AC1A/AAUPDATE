@@ -1,0 +1,24 @@
+# Python virtual environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# PyInstaller build cache and temporary output
+build/
+dist_updated/
+
+# Generated Windows executables belong in GitHub Releases
+dist/*.exe
+
+# Historical firmware archives and extracted legacy releases
+*.rar
+*.zip
+sv242固件v240/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+

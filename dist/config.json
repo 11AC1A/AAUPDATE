@@ -1,0 +1,31 @@
+{
+    "firmware_version": "AAHUB_v3.2.0",
+    "baud_rate": 921600,
+    "chip": "esp32s3",
+    "update_log": [
+        "• 此版本为重大更新,请务必同时将ASCOM驱动更新至3.5版本以确保兼容性",
+        "• 此版本支持了独立软件自定义pwm曲线控制功能",
+        "• 网页控制功能,您需要连接名为AAHUBproAP的WiFi热点,密码为12345678",
+        "• 连接后打开浏览器访问192.168.4.1即可进入控制页面",
+        "• 注意，此版本仅适配AAHUB焕新版，请勿在旧版设备上刷入此固件"
+
+        
+    ],
+    "firmware_files": [
+        {
+            "address": "0x0",
+            "file": "bootloader.bin",
+            "description": "Bootloader"
+        },
+        {
+            "address": "0x8000",
+            "file": "partition-table.bin",
+            "description": "分区表"
+        },
+        {
+            "address": "0x10000",
+            "file": "aahub_pro.bin",
+            "description": "固件"
+        }
+    ]
+}

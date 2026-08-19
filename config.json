@@ -1,0 +1,26 @@
+{
+    "firmware_version": "v2.1.0",
+    "baud_rate": 921600,
+    "chip": "esp32c6",
+    "update_log": [
+        "• 开发版本，仅供测试使用",
+        "• 优化默认参数，电机速率固定为300hz"
+    ],
+    "firmware_files": [
+        {
+            "address": "0x0",
+            "file": "bootloader.bin",
+            "description": "Bootloader"
+        },
+        {
+            "address": "0x8000",
+            "file": "partition-table.bin",
+            "description": "分区表"
+        },
+        {
+            "address": "0x10000",
+            "file": "eaf_focuser.bin",
+            "description": "主固件"
+        }
+    ]
+}
