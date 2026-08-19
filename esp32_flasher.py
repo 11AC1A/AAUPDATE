@@ -118,7 +118,10 @@ class ESP32Flasher:
         self.root, self.language, self.is_flashing = root, "en", False
         self.title_click_times = []
         self.hwnd = None
-        self.base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        # Source runs use the project folder; packaged builds use the EXE folder
+        # so config.json and firmware binaries can ship together in a release ZIP.
+        self.base_dir = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
+                         else os.path.dirname(os.path.abspath(__file__)))
         self.colors = {"dark":"#1e1e1e", "medium":"#2d2d30", "light":"#3e3e42", "accent":"#007acc", "hover":"#1c97ea", "text":"#e0e0e0", "dim":"#a8a8a8", "warning":"#ce9178", "success":"#4ec9b0", "error":"#f48771"}
         root.overrideredirect(True); root.geometry("700x690"); root.resizable(False, False); root.configure(bg=self.colors["dark"])
         self.configure_fonts(); self.configure_native_window(); self.load_config(); self.create_widgets(); self.refresh_ports()

@@ -6,6 +6,9 @@ __pycache__/
 # PyInstaller build cache and temporary output
 build/
 dist_updated/
+release_build/
+release_staging/
+release_artifacts/
 
 # Generated Windows executables belong in GitHub Releases
 dist/*.exe
@@ -21,4 +24,3 @@ sv242固件v240/
 .DS_Store
 Thumbs.db
 Desktop.ini
-
