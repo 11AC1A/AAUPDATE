@@ -107,6 +107,10 @@ pip install esptool pyserial
 
 ### 3. 运行程序
 
+普通用户可从 GitHub Releases 下载 `AAHUB_Firmware_Flasher.exe`，并将它与配套的 `config.json`、BIN 固件文件放在同一目录后直接运行。
+
+源码运行方式：
+
 ```bash
 python esp32_flasher.py
 ```
@@ -244,6 +248,13 @@ AAHUB固件升级程序/
 本项目采用 MIT 许可证。
 
 ## 📝 更新日志
+
+### v3.2.1 (2026-08-21)
+- 修复打包版无法从 EXE 所在目录识别旧版 `config.json` 和固件的问题
+- 兼容 UTF-8 BOM、GB18030 编码及旧版配置字段
+- 缺少配置或固件时，在软件文本框中显示处理步骤和缺失文件名
+- 修复串口、波特率下拉框白底白字的问题
+- GitHub Release 提供可直接运行的 Windows EXE
 
 ### v1.0.0 (2025-10-11)
 - 初始版本发布

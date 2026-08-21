@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """ESP32 firmware updater with a borderless, rounded eight-language UI."""
 import ctypes
+import copy
 import json
 import os
 import sys
@@ -17,6 +18,173 @@ import serial.tools.list_ports
 LANGUAGES = {"en": "English", "zh": "简体中文", "ja": "日本語", "ko": "한국어", "ru": "Русский", "de": "Deutsch", "fr": "Français", "es": "Español"}
 LANGUAGE_LABELS = {"en": "Language:", "zh": "语言：", "ja": "言語：", "ko": "언어:", "ru": "Язык:", "de": "Sprache:", "fr": "Langue :", "es": "Idioma:"}
 FONT_FAMILY = "SimHei"
+
+DEFAULT_CONFIG = {
+    "firmware_version": "v1.0.0",
+    "baud_rate": 921600,
+    "chip": "esp32",
+    "update_log": [],
+    "firmware_files": [],
+}
+
+CONFIG_ERRORS = {
+    "en": ("Unable to read config.json:\n{error}", "No firmware files are configured in config.json."),
+    "zh": ("无法读取 config.json：\n{error}", "config.json 中没有配置固件文件。"),
+    "ja": ("config.json を読み込めません：\n{error}", "config.json にファームウェアファイルが設定されていません。"),
+    "ko": ("config.json을 읽을 수 없습니다:\n{error}", "config.json에 펌웨어 파일이 설정되어 있지 않습니다."),
+    "ru": ("Не удалось прочитать config.json:\n{error}", "В config.json не указаны файлы прошивки."),
+    "de": ("config.json konnte nicht gelesen werden:\n{error}", "In config.json sind keine Firmware-Dateien konfiguriert."),
+    "fr": ("Impossible de lire config.json :\n{error}", "Aucun fichier de micrologiciel n’est configuré dans config.json."),
+    "es": ("No se pudo leer config.json:\n{error}", "No hay archivos de firmware configurados en config.json."),
+}
+
+FIRMWARE_GUIDANCE = {
+    "en": (
+        "⚠ Unable to read config.json\nPlace the matching config.json next to this EXE, verify its format, and restart the program.\nDetails: {error}",
+        "⚠ No firmware is configured\nPlace the matching config.json and all BIN firmware files next to this EXE, then restart the program.",
+        "⚠ Firmware files were not found\nPlace these files next to this EXE and config.json, then restart the program:\n{files}",
+    ),
+    "zh": (
+        "⚠ 无法读取 config.json\n请将与固件配套的 config.json 放在本程序（EXE）所在文件夹，确认文件格式正确，然后重新启动程序。\n错误详情：{error}",
+        "⚠ config.json 中没有固件配置\n请将与固件配套的 config.json 及全部 BIN 固件文件放在本程序（EXE）所在文件夹，然后重新启动程序。",
+        "⚠ 未检测到完整的固件文件\n请将以下文件与本程序（EXE）及 config.json 放在同一文件夹，然后重新启动程序：\n{files}",
+    ),
+    "ja": (
+        "⚠ config.json を読み込めません\n対応する config.json をこの EXE と同じフォルダーに置き、形式を確認してから再起動してください。\n詳細：{error}",
+        "⚠ ファームウェアが設定されていません\n対応する config.json とすべての BIN ファイルをこの EXE と同じフォルダーに置き、再起動してください。",
+        "⚠ ファームウェアファイルが見つかりません\n次のファイルをこの EXE および config.json と同じフォルダーに置き、再起動してください：\n{files}",
+    ),
+    "ko": (
+        "⚠ config.json을 읽을 수 없습니다\n일치하는 config.json을 이 EXE와 같은 폴더에 놓고 형식을 확인한 후 프로그램을 다시 시작하세요.\n세부 정보: {error}",
+        "⚠ 펌웨어가 구성되지 않았습니다\n일치하는 config.json과 모든 BIN 파일을 이 EXE와 같은 폴더에 놓고 다시 시작하세요.",
+        "⚠ 펌웨어 파일을 찾을 수 없습니다\n다음 파일을 이 EXE 및 config.json과 같은 폴더에 놓고 다시 시작하세요:\n{files}",
+    ),
+    "ru": (
+        "⚠ Не удалось прочитать config.json\nПоместите соответствующий config.json рядом с EXE, проверьте его формат и перезапустите программу.\nПодробности: {error}",
+        "⚠ Прошивка не настроена\nПоместите соответствующий config.json и все BIN-файлы рядом с EXE, затем перезапустите программу.",
+        "⚠ Файлы прошивки не найдены\nПоместите следующие файлы рядом с EXE и config.json, затем перезапустите программу:\n{files}",
+    ),
+    "de": (
+        "⚠ config.json konnte nicht gelesen werden\nLegen Sie die passende config.json neben diese EXE, prüfen Sie das Format und starten Sie das Programm neu.\nDetails: {error}",
+        "⚠ Keine Firmware konfiguriert\nLegen Sie die passende config.json und alle BIN-Dateien neben diese EXE und starten Sie das Programm neu.",
+        "⚠ Firmware-Dateien wurden nicht gefunden\nLegen Sie diese Dateien neben die EXE und config.json und starten Sie das Programm neu:\n{files}",
+    ),
+    "fr": (
+        "⚠ Impossible de lire config.json\nPlacez le fichier config.json correspondant à côté de cet EXE, vérifiez son format, puis redémarrez le programme.\nDétails : {error}",
+        "⚠ Aucun micrologiciel configuré\nPlacez le fichier config.json correspondant et tous les fichiers BIN à côté de cet EXE, puis redémarrez le programme.",
+        "⚠ Fichiers de micrologiciel introuvables\nPlacez ces fichiers à côté de l’EXE et de config.json, puis redémarrez le programme :\n{files}",
+    ),
+    "es": (
+        "⚠ No se pudo leer config.json\nColoque el config.json correspondiente junto a este EXE, compruebe su formato y reinicie el programa.\nDetalles: {error}",
+        "⚠ No hay firmware configurado\nColoque el config.json correspondiente y todos los archivos BIN junto a este EXE y reinicie el programa.",
+        "⚠ No se encontraron los archivos de firmware\nColoque estos archivos junto al EXE y config.json y reinicie el programa:\n{files}",
+    ),
+}
+
+
+def application_dir():
+    """Return the folder containing the source file or packaged executable."""
+    program = sys.executable if getattr(sys, "frozen", False) else __file__
+    return os.path.dirname(os.path.abspath(program))
+
+
+def _decode_json(raw, config_path):
+    """Decode current and historical Windows JSON encodings."""
+    encodings = ("utf-16",) if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else ("utf-8-sig", "gb18030")
+    decode_errors = []
+    for encoding in encodings:
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError as exc:
+            decode_errors.append(f"{encoding}: {exc}")
+    raise ValueError(f"{config_path}: unsupported text encoding ({'; '.join(decode_errors)})")
+
+
+def _first(config, *names, default=None):
+    for name in names:
+        if name in config:
+            return config[name]
+    return default
+
+
+def normalize_config(config, config_path="config.json"):
+    """Normalize legacy field names into the current configuration schema."""
+    if not isinstance(config, dict):
+        raise ValueError(f"{config_path}: the top-level JSON value must be an object")
+
+    normalized = copy.deepcopy(DEFAULT_CONFIG)
+    normalized["firmware_version"] = _first(config, "firmware_version", "version", default=normalized["firmware_version"])
+    normalized["baud_rate"] = _first(config, "baud_rate", "baudrate", default=normalized["baud_rate"])
+    normalized["chip"] = _first(config, "chip", "chip_type", default=normalized["chip"])
+    update_log = _first(config, "update_log", "release_notes", default=[])
+    if update_log is None:
+        update_log = []
+    elif isinstance(update_log, str):
+        update_log = [update_log]
+    elif not isinstance(update_log, list):
+        raise ValueError(f"{config_path}: update_log must be a list or string")
+    normalized["update_log"] = update_log
+
+    firmware_files = _first(config, "firmware_files", "files", "firmwares", default=[])
+    if isinstance(firmware_files, dict):
+        firmware_files = [
+            {"address": address, "file": filename}
+            for address, filename in firmware_files.items()
+        ]
+    if not isinstance(firmware_files, list):
+        raise ValueError(f"{config_path}: firmware_files must be a list")
+
+    normalized_files = []
+    for index, entry in enumerate(firmware_files, start=1):
+        if isinstance(entry, (list, tuple)) and len(entry) == 2:
+            entry = {"address": entry[0], "file": entry[1]}
+        if not isinstance(entry, dict):
+            raise ValueError(f"{config_path}: firmware_files item {index} must be an object")
+        address = _first(entry, "address", "offset")
+        filename = _first(entry, "file", "filename", "path")
+        if isinstance(address, int):
+            address = hex(address)
+        if not isinstance(address, str) or not address.strip():
+            raise ValueError(f"{config_path}: firmware_files item {index} has no address")
+        if not isinstance(filename, str) or not filename.strip():
+            raise ValueError(f"{config_path}: firmware_files item {index} has no file name")
+        normalized_files.append({
+            "address": address.strip(),
+            "file": filename.strip(),
+            "description": entry.get("description", ""),
+        })
+    normalized["firmware_files"] = normalized_files
+    return normalized
+
+
+def load_config_file(config_path):
+    """Load a current or historical config.json without hiding parse errors."""
+    with open(config_path, "rb") as config_file:
+        raw = config_file.read()
+    try:
+        parsed = json.loads(_decode_json(raw, config_path))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{config_path}: invalid JSON at line {exc.lineno}, column {exc.colno}") from exc
+    return normalize_config(parsed, config_path)
+
+
+def firmware_guidance(config, config_error, base_dir, language):
+    """Return actionable text when the local firmware package is incomplete."""
+    messages = FIRMWARE_GUIDANCE.get(language, FIRMWARE_GUIDANCE["en"])
+    if config_error:
+        return messages[0].format(error=config_error)
+
+    firmware_files = config.get("firmware_files", [])
+    if not firmware_files:
+        return messages[1]
+
+    missing = [
+        item["file"] for item in firmware_files
+        if not os.path.isfile(item["file"] if os.path.isabs(item["file"]) else os.path.join(base_dir, item["file"]))
+    ]
+    if missing:
+        return messages[2].format(files="\n".join(f"• {filename}" for filename in missing))
+    return None
 
 
 def enable_dpi_awareness():
@@ -120,8 +288,8 @@ class ESP32Flasher:
         self.hwnd = None
         # Source runs use the project folder; packaged builds use the EXE folder
         # so config.json and firmware binaries can ship together in a release ZIP.
-        self.base_dir = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
-                         else os.path.dirname(os.path.abspath(__file__)))
+        self.base_dir = application_dir()
+        self.config_error = None
         self.colors = {"dark":"#1e1e1e", "medium":"#2d2d30", "light":"#3e3e42", "accent":"#007acc", "hover":"#1c97ea", "text":"#e0e0e0", "dim":"#a8a8a8", "warning":"#ce9178", "success":"#4ec9b0", "error":"#f48771"}
         root.overrideredirect(True); root.geometry("700x690"); root.resizable(False, False); root.configure(bg=self.colors["dark"])
         self.configure_fonts(); self.configure_native_window(); self.load_config(); self.create_widgets(); self.refresh_ports()
@@ -178,8 +346,10 @@ class ESP32Flasher:
         self.root.after_idle(self.configure_native_window)
     def load_config(self):
         try:
-            with open(self.path("config.json"), encoding="utf-8") as f: self.config = json.load(f)
-        except Exception: self.config = {"firmware_version":"v1.0.0", "baud_rate":921600, "chip":"esp32", "update_log":[], "firmware_files":[]}
+            self.config = load_config_file(self.path("config.json"))
+        except (OSError, ValueError) as exc:
+            self.config = copy.deepcopy(DEFAULT_CONFIG)
+            self.config_error = str(exc)
     def label(self, parent, size=10, bold=False): return tk.Label(parent, bg=self.colors["medium"], fg=self.colors["text"], font=(FONT_FAMILY, size, "bold" if bold else "normal"))
     def button(self, parent, command, small=False):
         base, hover = (self.colors["light"], "#454545") if small else (self.colors["accent"], self.colors["hover"])
@@ -190,15 +360,12 @@ class ESP32Flasher:
     def card(self, parent, height=None):
         f=tk.Frame(parent,bg=self.colors["medium"],height=height); i=tk.Frame(f,bg=self.colors["medium"]); i.pack(fill="x",padx=15,pady=15); return f,i
     def create_widgets(self):
-        st=ttk.Style(); st.theme_use("clam"); st.configure("TCombobox",fieldbackground=self.colors["light"],background=self.colors["light"],foreground=self.colors["text"],arrowcolor=self.colors["text"],font=(FONT_FAMILY,10)); st.configure("TProgressbar",background=self.colors["accent"],troughcolor=self.colors["medium"])
-        st.configure("Language.TCombobox", fieldbackground="#f2f2f2", background="#f2f2f2",
-                     foreground="#000000", arrowcolor="#000000", font=(FONT_FAMILY,10))
-        st.map("Language.TCombobox",
-               fieldbackground=[("readonly", "#f2f2f2")],
-               foreground=[("readonly", "#000000")],
-               selectbackground=[("readonly", "#f2f2f2")],
-               selectforeground=[("readonly", "#000000")])
-        self.root.option_add("*TCombobox*Listbox.background",self.colors["light"]); self.root.option_add("*TCombobox*Listbox.foreground",self.colors["text"])
+        st=ttk.Style(); st.theme_use("clam")
+        for combo_style in ("Input.TCombobox", "Language.TCombobox"):
+            st.configure(combo_style,fieldbackground="#f2f2f2",background="#f2f2f2",foreground="#000000",arrowcolor="#000000",font=(FONT_FAMILY,10))
+            st.map(combo_style,fieldbackground=[("readonly","#f2f2f2")],foreground=[("readonly","#000000")],selectbackground=[("readonly","#f2f2f2")],selectforeground=[("readonly","#000000")])
+        st.configure("TProgressbar",background=self.colors["accent"],troughcolor=self.colors["medium"])
+        self.root.option_add("*TCombobox*Listbox.background","#f2f2f2"); self.root.option_add("*TCombobox*Listbox.foreground","#000000"); self.root.option_add("*TCombobox*Listbox.selectBackground",self.colors["accent"]); self.root.option_add("*TCombobox*Listbox.selectForeground","#ffffff")
         bar=tk.Frame(self.root,bg=self.colors["medium"],height=38); bar.pack(fill="x"); bar.pack_propagate(False)
         self.top_title=tk.Label(bar,bg=self.colors["medium"],fg=self.colors["text"],font=(FONT_FAMILY,10,"bold"),cursor="hand2"); self.top_title.pack(side="left",padx=16)
         close=tk.Button(bar,text="×",command=self.close_window,bg=self.colors["medium"],fg=self.colors["text"],bd=0,width=3,font=("Segoe UI",13),cursor="hand2"); close.pack(side="right",fill="y"); close.bind("<Enter>",lambda e:close.config(bg="#e81123")); close.bind("<Leave>",lambda e:close.config(bg=self.colors["medium"]))
@@ -226,8 +393,8 @@ class ESP32Flasher:
         header=tk.Frame(self.root,bg=self.colors["medium"],height=76); header.pack(fill="x"); header.pack_propagate(False); self.heading=tk.Label(header,bg=self.colors["medium"],fg=self.colors["accent"],font=(FONT_FAMILY,20,"bold")); self.heading.pack(pady=(13,15))
         main=tk.Frame(self.root,bg=self.colors["dark"]); main.pack(fill="both",expand=True,padx=20,pady=(18,17))
         f,i=self.card(main); f.pack(fill="x",pady=(0,15)); self.port_section=self.label(i,11,True); self.port_section.grid(row=0,column=0,columnspan=3,sticky="w",pady=(0,10)); self.port_l=self.label(i); self.port_l.grid(row=1,column=0,sticky="w",pady=5)
-        self.port_combo=ttk.Combobox(i,width=36,state="readonly",font=(FONT_FAMILY,10)); self.port_combo.grid(row=1,column=1,padx=10,pady=5); self.refresh_b=self.button(i,self.refresh_ports,True); self.refresh_b.grid(row=1,column=2,padx=5,pady=5)
-        self.baud_l=self.label(i); self.baud_l.grid(row=2,column=0,sticky="w",pady=5); self.baud=ttk.Combobox(i,width=36,state="readonly",font=(FONT_FAMILY,10),values=["115200","460800","921600","1500000"]); self.baud.set(str(self.config.get("baud_rate",921600))); self.baud.grid(row=2,column=1,padx=10,pady=5)
+        self.port_combo=ttk.Combobox(i,width=36,state="readonly",style="Input.TCombobox",font=(FONT_FAMILY,10)); self.port_combo.grid(row=1,column=1,padx=10,pady=5); self.refresh_b=self.button(i,self.refresh_ports,True); self.refresh_b.grid(row=1,column=2,padx=5,pady=5)
+        self.baud_l=self.label(i); self.baud_l.grid(row=2,column=0,sticky="w",pady=5); self.baud=ttk.Combobox(i,width=36,state="readonly",style="Input.TCombobox",font=(FONT_FAMILY,10),values=["115200","460800","921600","1500000"]); self.baud.set(str(self.config.get("baud_rate",921600))); self.baud.grid(row=2,column=1,padx=10,pady=5)
         f,i=self.card(main,200); f.pack(fill="x",pady=(0,15)); f.pack_propagate(False); self.notes_l=self.label(i,11,True); self.notes_l.pack(anchor="w",pady=(0,10)); self.log=tk.Text(i,height=6,width=70,bg=self.colors["light"],fg=self.colors["text"],bd=0,padx=15,pady=12,font=(FONT_FAMILY,10),state="disabled",wrap="word"); self.log.pack()
         self.progress=ttk.Progressbar(main,mode="indeterminate",length=660); self.progress.pack(pady=(5,10)); self.status=tk.Label(main,bg=self.colors["dark"],fg=self.colors["accent"],font=(FONT_FAMILY,10)); self.status.pack(pady=(0,15)); self.flash=self.button(main,self.start_flash); self.flash.pack(pady=(7,0))
         self.render()
@@ -235,7 +402,9 @@ class ESP32Flasher:
         self.root.title(self.s("title")); self.top_title.config(text=self.s("title")); self.lang_label.config(text=LANGUAGE_LABELS[self.language]); self.heading.config(text=self.s("title")); self.port_section.config(text=self.s("port_settings")); self.port_l.config(text=self.s("select_port")); self.refresh_b.config(text=self.s("refresh")); self.baud_l.config(text=self.s("baud")); self.notes_l.config(text=self.s("notes")); self.flash.config(text=self.s("updating") if self.is_flashing else self.s("start")); self.update_log(); self.set_status(self.s("ready"))
     def change_language(self,event=None): self.language=next(k for k,v in LANGUAGES.items() if v==self.lang.get()); self.render(); self.refresh_ports()
     def update_log(self):
-        lines=[self.s("version",version=self.config.get("firmware_version","v1.0.0")),"─"*60]+(self.config.get("update_log") or [self.s("no_notes")]); self.log.config(state="normal"); self.log.delete("1.0",tk.END); self.log.insert("1.0","\n".join(lines)); self.log.config(state="disabled")
+        guidance=firmware_guidance(self.config,self.config_error,self.base_dir,self.language)
+        lines=guidance.splitlines() if guidance else [self.s("version",version=self.config.get("firmware_version","v1.0.0")),"─"*60]+(self.config.get("update_log") or [self.s("no_notes")])
+        self.log.config(state="normal",fg=self.colors["warning"] if guidance else self.colors["text"]); self.log.delete("1.0",tk.END); self.log.insert("1.0","\n".join(lines)); self.log.config(state="disabled")
     def set_status(self,text,color=None): self.status.config(text=text,fg=color or self.colors["accent"])
     def refresh_ports(self):
         ports=[f"{p.device} - {p.description}" for p in serial.tools.list_ports.comports()]; self.port_combo["values"]=ports
@@ -244,6 +413,8 @@ class ESP32Flasher:
     def start_flash(self):
         if self.is_flashing: return messagebox.showwarning(self.s("warning"),self.s("already"))
         if not self.port_combo.get(): return messagebox.showerror(self.s("error"),self.s("select_first"))
+        if self.config_error: return messagebox.showerror(self.s("error"),CONFIG_ERRORS[self.language][0].format(error=self.config_error))
+        if not self.config.get("firmware_files"): return messagebox.showerror(self.s("error"),CONFIG_ERRORS[self.language][1])
         missing=[x["file"] for x in self.config.get("firmware_files",[]) if not os.path.exists(self.path(x["file"]))]
         if missing: return messagebox.showerror(self.s("error"),self.s("missing",files="\n".join(missing)))
         port=self.port_combo.get().split(" - ")[0]; version=self.config.get("firmware_version","v1.0.0")
